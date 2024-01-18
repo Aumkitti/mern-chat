@@ -183,7 +183,7 @@ wss.on('connection',(connection, req) => {
                 file: file ? filename: null,
                 sender: connection.userId,
                 recipient,
-                __id: messageData._id
+                __id: messageDoc._id
             })))
         }
     })
