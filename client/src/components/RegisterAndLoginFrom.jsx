@@ -10,34 +10,22 @@ const RegisterAndLoginFrom = () => {
   const { setUsername: setLoggedInUsername, setId } = useContext(UserContext);
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
+    const url = isLoginOrRegister === "register" ? "register" : "login";
     try {
-      const url = isLoginOrRegister === "register" ? "register" : "login";
-      const response = await axios.post(url, { username, password });
-  
-      // Check if the response is successful (status code 2xx)
-      if (response.status >= 200 && response.status < 300) {
-        const { data } = response;
-  
-        // Set the user context data (assuming setId and setUsername are available in the context)
-        setId(data.id);
-        setUsername(data.username);
-  
-        // Update any other necessary state or perform additional actions
-      } else {
-        // Handle unsuccessful response (e.g., display an error message)
-        console.error("Unsuccessful response:", response);
-      }
+      const { data } = await axios.post(url, { username, password });
+      setLoggedInUsername(username);
+      setId(data.id);
     } catch (error) {
-      // Handle network errors or exceptions
-      console.error("Error:", error.message);
+      console.log(error);
     }
   };
   
   return (
-    <div className="bg-black h-screen flex flex-col justify-center items-center " style={{ opacity: 0.8 }}>
+    <div className="bg-black h-screen flex flex-col justify-center items-center ">
       
-      <form onSubmit={handleSubmit} className="w-64 mx-auto mb-12 bg-white p-4 rounded-md shadow-md shadow-white" style={{ opacity: 0.8 }}>
+      <form onSubmit={handleSubmit} className="w-64 mx-auto mb-12 bg-white p-4 rounded-md shadow-lg shadow-pink-500">
+        <div className="Darkchat text-center font-bold ">Dark Chat</div>
+        <br></br>
         <input
           type="text"
           value={username}

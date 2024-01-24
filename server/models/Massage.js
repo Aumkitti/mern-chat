@@ -3,7 +3,7 @@ const MessageSchema = new mongoose.Schema({
     text: String,
     file: String,
     sender:{type:mongoose.Schema.Types.ObjectId, ref:"User"},
-    recipent:{type:mongoose.Schema.Types.ObjectId, ref:"User"},
+    recipient:{type:mongoose.Schema.Types.ObjectId, ref:"User"},
 },
     {timestamps:true}
 )

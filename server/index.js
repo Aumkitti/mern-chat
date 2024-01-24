@@ -1,197 +1,216 @@
-const express = require("express")
-const dotenv = require("dotenv")
-const jwt = require("jsonwebtoken")
-const cors = require("cors")
-const bcrypt = require("bcryptjs")
-const mongoos = require("mongoose")
-const cookieParser = require("cookie-parser")
-const User = require("./models/User")
-const Message = require("./models/Massage")
-const ws = require("ws")
-const fs = require("fs")
-const { log } = require("console")
+const express = require("express");
+const dotenv = require("dotenv");
+const jwt = require("jsonwebtoken");
+const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose");
+const cookieParser = require("cookie-parser");
+const User = require("./models/User");
+const Message = require("./models/Massage");
+const ws = require("ws");
+const fs = require("fs");
+const { setTimeout } = require("timers/promises");
+const { rejects } = require("assert");
 
-
-
-//server middleware
+dotenv.config(); //เพื่อเรียกใช้ไฟล์ .env
 const app = express();
-//const CLIENT_URL = process.env.CLIENT_URL
 
-
-app.use(cors({credentials: true, origin:"http://localhost:5173"}));
+app.use(cors({ credentials: true, origin: "http://localhost:5173" }));
 app.use(express.json());
 app.use(cookieParser());
-//set static(public) folder
-app.use("/uploads", express.static(__dirname + "/uploads"))
-dotenv.config(); //เชื่อมต่อกับ env เพื่อเรียกใช้
-const MONGODB_URI = process.env.MONGODB_URI; //เรียกใช้ URI
-mongoos.connect(MONGODB_URI);
+app.use("/uploads", express.static(__dirname + "/uploads"));
 
+//Connect mongo
+const MONGODB_URI = process.env.MONGODB_URI;
+mongoose.connect(MONGODB_URI).then((success) => {
+  if (!success) console.log(success);
+});
+
+//ไว้ตรวจสอบการเชื่อมต่อฐานข้อมูล
 app.get("/", (req, res) => {
-    res.send("<h1>This is a RESTful API for mern chat</h1>")
-})
+  res.send("This is a Restful api Mern-Chat");
+});
 
 //Register
 const salt = bcrypt.genSaltSync(10);
-app.post("/register",async (req, res) =>{
-    const {username, password} = req.body; //สลายโคลงสร้าง
-    try {
-        const userDoc = await User.create({ //hach เป็น one way endcription (สร้าง Usermodels และดึงมาใช้)
-            username,
-            password: bcrypt.hashSync(password, salt) // salt อักษรที่ถูกสุ่มขึ้นมาเพื่อเพิ่มความยากของ pass
-        })
-        res.json(userDoc); 
-    } catch (error) {
-        if(error) throw error;
-        res.statusCode(500).json("error");
-    }
-})
-
-//login
-const secret = process.env.SECRET;
-app.post("/login", async (req, res) => {
-    const { username, password } = req.body;
-    const userDoc = await User.findOne({ username });
-  
-    if (userDoc) {
-      const isMatchedPassword = bcrypt.compareSync(password, userDoc.password);
-  
-      if (isMatchedPassword) {
-        jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
-          if (err) {
-            console.error(err);
-            res.status(500).json("internal server error");
-          } else {
-            res.cookie("token", token).json({
-              id: userDoc._id,
-              username,
-            });
-          }
-        });
-      } else {
-        res.status(400).json("wrong credentials");
-      }
-    } else {
-      res.status(404).json("user not found");
-    }
-  });
-  
-
-//logout
-app.post("/logout", (req,res)=>{
-    res.cookie("token", "").json("ok")
-})
-
-//Profile
-app.get("/profile" , (req,res) => {
-    const token = req.cookies?.token;
-    if (token) {
-        jwt.verify(token,secret, {}, (err, userData) => {
-            if (err) throw err;
-            res.json(userData);
-        });
-    } else {
-        res.status(401).json("no token")
-    }
-})
-
-
-
-
-
-//Runserver on
-const PORT = process.env.PORT;
-const server = app.listen(PORT, ()=>{
-    console.log("Server is running on http://localhost:" + PORT);
+app.post("/register", async (req, res) => {
+  const { username, password } = req.body; // สลายโครงสร้าง
+  try {
+    const userDoc = await User.create({
+      username,
+      password: bcrypt.hashSync(password, salt),
+    });
+    res.json(userDoc);
+  } catch (error) {
+    console.log(error);
+    res.status(400).json(error);
+  }
 });
 
+//Login
+const secret = process.env.SECRET;
+app.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+  const userDoc = await User.findOne({ username }); //เอา username ไปหาข้อมูลจากฐานข้อมูล
+  if (userDoc) {
+    const isMatchedPassword = bcrypt.compareSync(password, userDoc.password); //เช็ค พาส ที่ได้จากฟอร์ม และในฐานข้อมูลว่าเหมือนกันไหม
+    if (isMatchedPassword) {
+      jwt.sign({ username, userId: userDoc._id }, secret, {}, (err, token) => {
+        if (err) throw err;
 
-//Web Socket Server
-const wss = new ws.WebSocketServer({server});
-
-wss.on('connection',(connection, req) => {
-    //แจ้ง user ว่า online อยู่
-    const notifyAboutOnlinePeople = () => {
-        [...wss.clients] . forEach(client =>{
-            client.send(
-                JSON.stringify({
-                online: [...wss.clients].map((c) => ({
-                    userId:c.userId, 
-                    username:c.username}))
-            }))
-        })//สลายโคลงสร้าง แล้วจับมาใส่ Array //unicast ส่งทีละคน multicast ส่งหลายคนมากกว่า 1 boardcast ทุกคนในระบบ
+        res.cookie("token", token).json({
+          userId: userDoc._id,
+          username,
+        });
+      });
+    } else {
+      res.status(400).json("wrong credentials");
     }
-    connection.isAlive = true;
+  } else {
+    res.status(400).json("user not found");
+  }
+});
 
-    connection.timer = setInterval(()=>{
-        connection.ping();
-        connection.deadTimer = setTimeout(()=>{
-            connection.isAlive = false;
-            clearInterval(connection.timer);
-            connection.terminate();
-            notifyAboutOnlinePeople();
-            console.log('dead');
-        }, 1000)
-    }, 5000)
-    connection.on('pong' , ()=>{
-        clearTimeout(connection.deadTimer);
-    })
+app.post("/logout", (req, res) => {
+  res.cookie("token", "").json("ok");
+});
 
-    //read username and id from cookie for this connection
-    const cookies = req.headers.cookie;
-    if(cookies){
-        //ตัด ที่ ; และค้นหาว่ามีชื่อว่า token= ไหม
-        const tokenCookieString = cookies.split(';').find(str=>str.startsWith("token="))
-        if(tokenCookieString){
-            // split คือ คนหาว่ามีเครื่องหมาย = ไหม 
-            const token = tokenCookieString.split('=')[1]
-            if(token){
-                jwt.verify(token, secret, {}, (err, userData) => {
-                    if(err) throw err
-                    const {userId, username} = userData;
-                    connection.userId = userId;
-                    connection.username = username;
-                })
-            }
-        }
+app.get("/profile", (req, res) => {
+  const token = req.cookies?.token;
+  if (token) {
+    jwt.verify(token, secret, {}, (err, userData) => {
+      if (err) throw err;
+      res.json(userData);
+    });
+  } else {
+    res.status(401).json("no token");
+  }
+});
+
+app.get("/people", async (req, res) => {
+  const users = await User.find({}, { _id: 1, username: 1 });
+  res.json(users);
+});
+
+const getUserDataFromRequest = (req) =>{
+  return new Promise((resolve, rejects) => {
+    const token = req.cookies?.token; //? เพื่อเช็คดูว่ามีหรือไม่มี
+    if(token){
+      jwt.verify(token, secret, {}, (err, userData) => {
+        if(err) throw err;
+        resolve(userData);
+      })
+    }else{
+      rejects("no token")
     }
-    connection.on("message", async (message)=>{
-        const messageData = JSON.parse(message.toString());
-        const {recipient, sender, text, file} = messageData;
-        let filename = null;
-        if(file){
-            const parts = file.name.split('.');
-            const ext = parts[parts.length - 1];
-            filename = Date.now() + "." + ext;
-            //__dirname คือการบอกที่อยู่ของไฟล์ที่กำลังทำงานอยู่ขณะนั้น
-            const path = __dirname + "/uploads/" + filename;// ไฟล์จะไปอยู่ที่โฟล์เดอร์อัพโหลด ที่อยู่ใน server 
-            //เหตุผลที่ต้องรีเนมไฟล์ใหม่ตลอด เพราะเราไม่ต้องการให้ไฟล์ชื่อซํ้ากันและเขียนทับกัน
-            const bufferData = new Buffer(file.data.split(',')[1], 'base64')
-            fs.writeFile(path, bufferData, ()=>{
-                console.log('file saved:  ' + path )
-            })
-        }
-        if(recipient && (text || file)){
-            const messageDoc = await Message.create({
-                sender: connection.userId,
-                recipient,
-                text,
-                file: file ? filename : null
-            });
-            [...wss.clients].filter(c=>c.userId === recipient).forEach(c=> c.send(JSON.stringify({
-                test,
-                file: file ? filename: null,
-                sender: connection.userId,
-                recipient,
-                __id: messageDoc._id
-            })))
-        }
-    })
-
-
-
-
-    notifyAboutOnlinePeople();
+  })
+}
+app.get("/messages/:userId", async (req, res)=>{
+  const {userId} = req.params;
+  const userData = await getUserDataFromRequest(req);
+  const ourUserId = userData.userId
+  const message = await Message.find({
+    sender: {$in: [userId, ourUserId]},
+    recipient: {$in: [userId, ourUserId]},
+  }).sort({ createdAt: 1 });
+  res.json(message)
 })
 
 
+
+
+//เป็นตัวบอกว่ามาจาก PORTไหน โดยดึงมาจากไฟล์ env
+const PORT = process.env.PORT;
+const server = app.listen(PORT, () => {
+  console.log("Server is running on localhost:" + PORT);
+});
+//Web Socket Server
+const wss = new ws.WebSocketServer({ server });
+
+wss.on("connection", (connection, req) => {
+  const notifyAboutOnlinePeople = () => {
+    [...wss.clients].forEach((client) => {
+      client.send(
+        JSON.stringify({
+          online: [...wss.clients].map((c) => ({
+            userId: c.userId,
+            username: c.username,
+          })),
+        })
+      );
+    });
+  };
+  connection.isAlive = true;
+  connection.timer = setInterval(() => {
+    connection.ping();
+    connection.deadTimer = setTimeout(() => {
+      clearInterval(connection.timer);
+      connection.terminate();
+      notifyAboutOnlinePeople();
+      console.log("dead");
+    }, 1000);
+  }, 5000);
+
+  connection.on("pong", () => {
+    clearTimeout(connection.deadTimer);
+  });
+  //read username and id from the cookie for this connection
+  const cookies = req.headers.cookie;
+  if (cookies) {
+    const tokenCookieString = cookies
+      .split(";")
+      .find((str) => str.startsWith("token="));
+    if (tokenCookieString) {
+      const token = tokenCookieString.split("=")[1];
+      if (token) {
+        jwt.verify(token, secret, {}, (err, userData) => {
+          if (err) throw err;
+          const { userId, username } = userData;
+          connection.userId = userId;
+          connection.username = username;
+        });
+      }
+    }
+  }
+  connection.on("message", async (message) => {
+    const messageData = JSON.parse(message.toString());
+    const { recipient, sender, text, file } = messageData;
+    let filename = null;
+    if (file) {
+      //ใช้splitเพื่อแยกนามสกุลไฟล์กับชื่อออกไป
+      const parts = file.name.split(".");
+      const ext = parts[parts.length - 1];
+      filename = Date.now() + "." + ext;
+      //เก็บไฟล์ในuploads
+      const path = __dirname + "/uploads/" + filename;
+      //ป้องกันการอัพโหลดไฟล์ชื่อซ้ำ
+      //const bufferData = new Buffer(file.name.data.split(",")[1], "base64");
+      fs.writeFile(path, file.data.split(",")[1], "base64", () => {
+        console.log("file saved: " + path);
+      });
+    }
+    if (recipient && (text || file)) {
+      const messageDoc = await Message.create({
+        sender: connection.userId,
+        recipient,
+        text,
+        file: file ? filename : null,
+      });
+      [...wss.clients]
+        .filter((c) => c.userId === recipient)
+        .forEach((c) =>
+          c.send(
+            JSON.stringify({
+              text,
+              file: file ? filename : null,
+              sender: connection.userId,
+              recipient,
+              _id: messageDoc._id,
+            })
+          )
+        );
+    }
+  });
+
+  notifyAboutOnlinePeople();
+});
