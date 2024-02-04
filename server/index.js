@@ -78,17 +78,23 @@ app.post("/logout", (req, res) => {
 app.get("/profile", (req, res) => {
   const token = req.cookies?.token;
   if (token) {
+     // ทำการยืนยันตัวตนของโทเคน (token) โดยใช้คีย์ลับ (secret) ที่กำหนดไว้
     jwt.verify(token, secret, {}, (err, userData) => {
+       // หากมีข้อผิดพลาดในระหว่างการยืนยันตัวตนของโทเคน ตอบกลับด้วยข้อผิดพลาด
       if (err) throw err;
+      // หากโทเคนถูกต้อง ตอบกลับด้วยข้อมูลผู้ใช้ที่ถูกถอดรหัสจากโทเคน
       res.json(userData);
     });
   } else {
+    // หากไม่มีโทเคนในคุกกี้ของคำขอ ตอบกลับด้วยสถานะ 401 และข้อความข้อผิดพลาด
     res.status(401).json("no token");
   }
 });
 
 app.get("/people", async (req, res) => {
+  // ใช้ Model User เพื่อดึงข้อมูลผู้ใช้ทั้งหมดจากฐานข้อมูล
   const users = await User.find({}, { _id: 1, username: 1 });
+   // ตอบกลับด้วยข้อมูลผู้ใช้ที่ถูกกรองเพื่อแสดงเฉพาะ _id และ username
   res.json(users);
 });
 
@@ -106,9 +112,12 @@ const getUserDataFromRequest = (req) =>{
   })
 }
 app.get("/messages/:userId", async (req, res)=>{
+  // ดึง userId จากพารามิเตอร์ของคำขอ
   const {userId} = req.params;
+  // ดึงข้อมูลผู้ใช้จากโทเคนที่ถูกส่งมาในคำขอ
   const userData = await getUserDataFromRequest(req);
   const ourUserId = userData.userId
+  // ค้นหาข้อความที่เกี่ยวข้องกับผู้ใช้ทั้งสองฝั่ง (sender หรือ recipient)
   const message = await Message.find({
     sender: {$in: [userId, ourUserId]},
     recipient: {$in: [userId, ourUserId]},
@@ -124,6 +133,8 @@ const PORT = process.env.PORT;
 const server = app.listen(PORT, () => {
   console.log("Server is running on localhost:" + PORT);
 });
+
+
 //Web Socket Server
 const wss = new ws.WebSocketServer({ server });
 
